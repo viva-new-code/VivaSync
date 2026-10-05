@@ -1,0 +1,68 @@
+{
+  "_comment": [
+    "Snapshot of the real Vivaldi API surface the mod depends on, used by",
+    "00-harness-selftest.js to detect the test doubles drifting away from the",
+    "browser. Re-capture against a running Vivaldi with:",
+    "    node test/cdp.js --capture",
+    "(start Vivaldi with --remote-debugging-port=9222 first).",
+    "",
+    "'verified' lists what was observed directly in a live browser session.",
+    "'unverified' lists things the code relies on that have NOT been confirmed",
+    "against a real build - treat those as assumptions and keep the code",
+    "defensive about them."
+  ],
+  "vivaldiVersion": "8.1.4087.66",
+  "capturedAt": "2026-08-21",
+  "capturedFrom": "live session, device \"workshop\"",
+
+  "notesApi": [
+    "NodeType", "beginImport", "create", "emptyTrash", "endImport", "get",
+    "getTree", "move", "onChanged", "onCreated", "onImportBegan",
+    "onImportEnded", "onMoved", "onRemoved", "remove", "search", "update"
+  ],
+
+  "workspaceFields": ["id", "name"],
+
+  "noteFields": ["id", "title", "type", "children"],
+
+  "verified": {
+    "vivaldi.tabsPrivate.move validates its tweaks": "an unknown tweak name makes the call THROW, it is not ignored. Captured 2026-08-28 via VivaSync.diagAddToStack() on device \"workshop\": TypeError ... Error at property 'tweaks': Error at index 0: Value must be one of above, below, collapsed-above, create-group, create-new-group, detached, do-not-reparent, expand-related, into, on, strip-accordion, strip-down, strip-no-stacks, strip-up, target-is-tab, ungroup, untile. The test double enforces the same list (harness.js VALID_TWEAKS) - without that, ADAPTER.addToStack shipped an invented tweak name for a whole release and threw on every call while the suite stayed green.",
+    "tweak vocabulary": ["above", "below", "collapsed-above", "create-group", "create-new-group", "detached", "do-not-reparent", "expand-related", "into", "on", "strip-accordion", "strip-down", "strip-no-stacks", "strip-up", "target-is-tab", "ungroup", "untile"],
+    "adding a tab to an EXISTING stack": "tabsPrivate.move({tabIds, target: <GROUP ext id>, tweaks: ['do-not-reparent','on','create-group']}) - Vivaldi's own drop-a-tab-onto-a-stack call (bundle.js endInternalDragging). The target is the GROUP id, not a tab id, and 'target-is-tab' is deliberately NOT passed. There is no 'group-follows-target' tweak; the mod invented it.",
+    "taking a tab OUT of a stack": "the 'ungroup' tweak. bundle.js removeFromTabStack -> moveToIndex(win, pages, lastIndex+1, ['untile','ungroup']), i.e. tabsPrivate.move with tweaks ['expand-related','untile','ungroup']. ADAPTER.detachFromStack tries this first (with workspaceId + target:-1 rather than a window-wide index, because the tab-strip index spans all workspaces) and keeps its two older guesses behind it.",
+    "vivaldi.prefs.get('vivaldi.workspaces.list')": "returns an array of {id (float timestamp), name}",
+    "vivaldi.sync.getDefaultSessionName()": "returns the device name string (\"workshop\")",
+    "vivaldi.notes.getTree()": "returns the root folder; children include a type:'trash' node",
+    "vivaldi.notes.create({parentId,title,content,type})": "returns the created node carrying .id",
+    "vivaldi.notes.update(id,{content})": "persists; survives a browser restart",
+    "note node .title / .content": "read back correctly (on disk these are subject/content)",
+    "vivaldi.tabsPrivate.move + setGroupProperties": "creates and names a real stack; backend assigns the group id",
+    "grouping is NOT visible in vivExtData when move() returns": "the call answers with the new group id, but the tabs' extData catches up afterwards - which is why diagMakeStack and diagDetach both sleep ~400ms before reading it back. Every grouping op must be waited out (ADAPTER.awaitStack / pollTabs): a snapshot taken inside that window reports plain tabs, and publishing it makes the peer take its own stack apart.",
+    "chrome.tabs.create": "new tab joins the active workspace",
+    "chrome.tabs.Tab.status": "the Chromium enum \"unloaded\" | \"loading\" | \"complete\". \"unloaded\" is a HIBERNATED tab (Vivaldi discards background tabs and restores a session lazily), NOT one that is navigating - its URL is stable. isLoadingTab must key on \"loading\" alone; treating anything != \"complete\" as in-flight stopped deletes propagating between devices entirely.",
+    "chrome.extension.getViews()": "reaches the visible window.html document for the settings UI",
+    "a tab stack has a COLOUR, set through setGroupProperties": "Read out of bundle.js 8.1.4087.66 (2026-09-23): the UI's setStackColor(win, groupId, color) is `tabsPrivate.setGroupProperties({groupExtId, groupColor})`, and a member's colour is read back as `tab.vivExtData.groupColor` — beside `fixedGroupTitle`, exactly like the name. The picker offers nine named colours, color1..color9 (grey, blue, red, yellow, green, pink, purple, teal, orange), and clears with the empty string (the Color menu's 'No Color' calls setStackColor(win, gid, '')). The mod carries the token through without validating it against that list, because a later build may add to it. VivaSync.diagMakeStack() exercises the call (colorSet, colorOnEveryMember, colorCleared).",
+    "a tab stack can be PINNED, and stays a stack": "Field report 2026-09-22: the user pinned a stack on one machine (Vivaldi's own gesture pins the whole stack, which moves into the pinned strip and stays a stack). Before 3.18 the mod had no such notion and published its members as loose pinned tabs, so the stack arrived on the other machine taken apart.",
+    "ADAPTER.detachFromStack takes a tab back out of a stack": "confirmed 2026-08-27 on both devices via VivaSync.diagDetach() -> detached: true. Which of its two mechanisms landed (a move without 'do-not-reparent', or a group of its own) was not recorded; the harness models the first."
+  },
+
+  "unverified": {
+    "a stack of one is dissolved": "Vivaldi stops rendering a stack once it drops below two tabs; whether it also clears vivExtData.group on the survivor is NOT confirmed. buildSnapshot/liveWorkspaceView/itemsOf therefore treat a one-member group as a plain tab, so the mod behaves the same either way.",
+    "chrome.tabs.create joins the ACTIVE TAB'S stack": "asserted by the mod's own phase-1/phase-2 comment, not captured. If it is wrong the split is merely unnecessary; if it is right and unhandled, top-level tabs get swallowed - hence ADAPTER.detachFromStack.",
+    "vivaldi.tabsPrivate.move without 'do-not-reparent' ungroups": "Unconfirmed, and now only the SECOND thing detachFromStack tries - the 'ungroup' tweak (verified above, from bundle.js removeFromTabStack) is attempt 1. diagDetach reports only that the tab left its group, not which attempt did it. Every attempt verifies vivExtData and falls through, so a wrong guess degrades rather than corrupts; the harness models attempt 1.",
+    "note node .parentId": "NOT confirmed on a real build. NOTES.classify uses it as a fast path and falls back to a folder listing when absent - do not make it load-bearing.",
+    "vivaldi.notes.onChanged payload": "listener arity/shape assumed to be (id, changeInfo) as in chrome.bookmarks; the mod only uses the id.",
+    "note content size limit": "unknown; large workspaces produce large notes.",
+    "vivaldi.tabsPrivate.move un-pins a repositioned tab": "NOT captured from a build. The pinned strip is at the front of the tab bar and pinToWorkspace places a tab at the end of its workspace's region, so a tab created pinned and then moved may lose the pin - the pre-provenance field report was a pinned tab arriving unpinned on the peer. The harness models it pessimistically; the engine pins only AFTER every move (applyDesired's pin phase re-reads the live state), which is correct whether or not the guess is. VivaSync.diagPin() settles it (lostByMove).",
+    "pinned tabs keep their workspaceId": "Assumed - the VivaldiWorkspacesRoaming prototype synced pins across workspaces this way in the field, and its scan filtered on workspaceId. If a pinned tab were workspace-less, buildSnapshot could not see it at all. VivaSync.diagPin() reports it (keptWorkspace).",
+    "chrome.tabs.create({pinned:true, vivExtData:{workspaceId}}) lands pinned in that workspace": "Confirmed in the field for the Roaming prototype's create path, not re-captured for this mod. applyDesired verifies the landing and falls back to placing the tab unpinned. VivaSync.diagPin() reports it (createPinned, landed).",
+    "vivaldi.tabsPrivate.move with a numeric target is an index move": "bundle.js's own moveToIndex passes chrome tab indices as `target` (with windowId, no workspaceId, tweaks [\"expand-related\", ...]) and its move-to-beginning/end passes tweaks [\"do-not-reparent\"]; the engine's ADAPTER.moveToIndex combines a numeric target, an explicit workspaceId and [\"do-not-reparent\"], which no build has been checked for - the harness models chrome.tabs.move semantics (post-removal frame, movers keep order and group) and the engine verifies the landing index and falls back to the same call without workspaceId. VivaSync.diagOrder() settles it (afterLanded, beforeLanded, runLanded, keptWorkspace).",
+    "a tab created by chrome.tabs.create is `loading` until the page commits": "Ordinary browser behaviour, not captured through cdp.js. It matters because the engine treats a loading tab as volatile (never closed, never published), and the order phase must still place one: 3.17.0 matched order units by URL and skipped volatile ones, so a tab a peer opened from a link was created at the end of the strip on the receiving device and left there. The harness now creates tabs `loading` (env.setLoadLatency).",
+    "chrome.tabs.update({pinned}) on a stack MEMBER keeps it in the group": "The user pins a stack as a unit; the API only offers one tab at a time, so the engine pins the members one by one. Whether the group survives that is not captured - VivaSync.diagPin() reports it as memberPinKeptGroup / stackPinKeptGroup / stackUnpinKeptGroup. The harness assumes it does; the engine reads the group back after the pin phase and rebuilds the stack when it came apart, which test/15-pinned.js exercises with env.breakGroupOnPin().",
+    "reordering a stack member INSIDE its own run keeps it in the stack": "Assumed from `do-not-reparent` (bundle.js passes it for its own move-to-index calls) plus the fact that the target lies between two members of the same group, so no other stack is adjacent to the landing site. The engine verifies every such move and, if the member left the group, puts it back with addToStack and abandons that stack's reordering for the round. VivaSync.diagOrder() reports it (memberReorderKeptGroup).",
+    "a top-level tab moved to a stack's EDGE stays top-level": "NOT modelled. The VivaldiWorkspacesRoaming prototype reported (8.1) that a tab placed at or inside a stack's run is absorbed into it, do-not-reparent notwithstanding - but its reorder code also passed a tweak the API rejects ('preserve-group'), so how much of that report is the primitive and how much the broken call is unknown. The order phase only ever targets boundaries between units and moves stacks as whole runs, so a tab never lands INSIDE a run; landing next to one is the ordinary state of a tab strip. VivaSync.diagOrder() reports it (afterAbsorbed, beforeAbsorbed, runKeptGroup).",
+    "setGroupProperties changes ONLY the property it is given": "Vivaldi's own UI calls it with groupTitle alone (setFixedStackTitle) or groupColor alone (setStackColor), which is only evidence that a partial update is the intended usage, not that the other property survives it. The engine asserts a stack's name and its colour in two separate calls, name first, so a build that wiped the other would flap between them for ever. VivaSync.diagMakeStack() reports it (nameKeptOnColor); the harness models the properties as independent.",
+    "chrome.tabs.onUpdated fires with vivExtData when a stack property changes": "Assumed, and the engine has relied on it since long before colours: its onUpdated listener treats `info.vivExtData` as the signal that stack membership or a rename happened, and a colour the user picks reaches the write path the same way. If a build stayed silent, the change would still be published — by the next tab event, or the next workspace switch — just not immediately. The harness fires it (env.setStackColor).",
+    "a PINNED newborn joins the active tab's stack": "Observed in the field (3.16.0, 2026-09-18): a pinned tab arriving at a new address while the receiving device's active tab sat in a stack became that stack's first member. Not captured through cdp.js, so listed here rather than under verified. The harness models it; applyDesired detaches such a tab before phase 2 and re-pins it in the pin phase, and buildSnapshot never publishes a pinned tab as a member. VivaSync.diagPin() reports it (activeInStack, joinedStack) when run from a stack member."
+  }
+}

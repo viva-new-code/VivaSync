@@ -1,0 +1,14 @@
+# Editor / IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Sync data lives in Vivaldi Notes, not on disk — nothing generated here.
+*.json
+!test/fixtures/*.json
+
+# Logs
+*.log

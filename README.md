@@ -34,8 +34,8 @@ and nothing crosses machines.
 **Ensure that local time is set correctly** on all machines with the mod installed and involved in the synchronization.
 
 ## Install
-Download a packed release ...here...
-Unzip the release archite to a local folder, open terminal or PowerShell console in the unzipped folder and run install-* script matching your OS.
+Builds are published as GitHub Releases —
+[**Releases page**](../../releases). Each release ships VivaSync-<version>.zip archive with the mod itself, documentation and three installer/uninstaller scripts for Linux, Windows and MacOS installations. Download the archive, unpack and execute the install-* script matching your OS.
 > **Note** As it is usual with Vivaldi mods there is a need to reinstall the mod after each Vivaldi browser update.
 
 ### Install (Windows)
